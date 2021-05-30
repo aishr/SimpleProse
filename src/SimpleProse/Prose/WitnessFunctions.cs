@@ -6,6 +6,7 @@ using Microsoft.ProgramSynthesis.Learning;
 using Microsoft.ProgramSynthesis.Rules;
 using Microsoft.ProgramSynthesis.Specifications;
 using Microsoft.ProgramSynthesis.Utils;
+using Microsoft.Z3;
 
 namespace SimpleProse.Prose
 {
@@ -20,7 +21,7 @@ namespace SimpleProse.Prose
             var examples = new Dictionary<State, IEnumerable<object>>();
             foreach (var input in spec.ProvidedInputs)
             {
-                var before = ((IEnumerable<int>) input.Bindings.First().Value).ToList();
+                var before = (Node) input.Bindings.First().Value;
                 var lsts = spec.DisjunctiveExamples[input];
                 var k = (int) kSpec.Examples[input];
                 if (lsts == null)
@@ -33,14 +34,15 @@ namespace SimpleProse.Prose
                     examples[input] = new List<object>();
                 }
                 
-                
-                foreach (List<int> lst in lsts)
+                foreach (Node lst in lsts)
                 {
-                    var result = lst.ToList();
+                    var result = lst.Children.ToList();
                     var item = result[k];
                     result.RemoveAt(k);
                     result.Insert(0, item);
-                    ((List<object>) examples[input]).Add(result);
+                    var newChildren = result.Select(x => (BoolExpr) x.Expr);
+                    var newExpr = lst.Ctx.MkOr(newChildren);
+                    ((List<object>) examples[input]).Add(Utils.HandleSmtLibParsed(newExpr, lst.Ctx));
                     
                 }
             }
@@ -55,8 +57,8 @@ namespace SimpleProse.Prose
             var examples = new Dictionary<State, IEnumerable<object>>();
             foreach (var input in spec.ProvidedInputs)
             {
-                var before = ((IEnumerable<int>) input.Bindings.First().Value).ToList();
-                var finalList = Enumerable.Range(1, before.Count - 1).ToEnumerable();
+                var before = (Node) input.Bindings.First().Value;
+                var finalList = Enumerable.Range(1, before.Children.Count - 1).ToEnumerable();
 
                 examples[input] = finalList;
 

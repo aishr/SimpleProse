@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using SimpleProse.Prose;
+using SimpleProse;
 
 using semantics SimpleProse.Prose.Semantics;
 using learners SimpleProse.Prose.WitnessFunctions;
@@ -8,7 +9,7 @@ language test;
 
 @complete feature double Score = RankingScore;
 
-@start IEnumerable<int> simpleOutput := simpleInput | MoveFirstRight(@recurse[3] simpleOutput, k);
+@start Node simpleOutput := simpleInput | MoveFirstRight(@recurse[3] simpleOutput, k);
 
-@input IEnumerable<int> simpleInput;
+@input Node simpleInput;
 int k;

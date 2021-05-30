@@ -8,6 +8,7 @@
     <ItemGroup>
       <PackageReference Include="Microsoft.ProgramSynthesis" Version="7.30.0" />
       <PackageReference Include="Microsoft.ProgramSynthesis.Compiler" Version="7.30.0" />
+      <PackageReference Include="Microsoft.Z3.x64" Version="4.8.10" />
     </ItemGroup>
 
 </Project>

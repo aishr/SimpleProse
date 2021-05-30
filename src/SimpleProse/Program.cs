@@ -3,16 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Antlr4.Runtime.Misc;
 using Microsoft.ProgramSynthesis;
 using Microsoft.ProgramSynthesis.Compiler;
 using Microsoft.ProgramSynthesis.Diagnostics;
-using Microsoft.ProgramSynthesis.Extraction.Json.Build.NodeTypes;
 using Microsoft.ProgramSynthesis.Learning;
 using Microsoft.ProgramSynthesis.Learning.Logging;
 using Microsoft.ProgramSynthesis.Learning.Strategies;
-using Microsoft.ProgramSynthesis.Specifications;
-using Microsoft.ProgramSynthesis.Utils.Interactive;
+using Microsoft.Z3;
 using SimpleProse.Prose;
 
 namespace SimpleProse
@@ -44,7 +41,8 @@ namespace SimpleProse
                 new CompilerOptions() {
                 InputGrammarText = grammar,
                 References = CompilerReference.FromAssemblyFiles(
-                    typeof(Semantics).GetTypeInfo().Assembly)
+                    typeof(Semantics).GetTypeInfo().Assembly, 
+                    typeof(Node).GetTypeInfo().Assembly)
                 });
         }
 
@@ -53,10 +51,10 @@ namespace SimpleProse
             GetGrammar(@"Prose/test.grammar");
             var inputExamples = new List<Tuple<IEnumerable<int>, IEnumerable<int>>>()
             {
-                new Tuple<IEnumerable<int>, IEnumerable<int>>(input, output)
+                new (input, output)
             };
 
-            var spec = CreateSimpleExampleSpec(inputExamples, Grammar);
+            var spec = Utils.CreateSimpleExampleSpec(inputExamples, Grammar);
             RankingScore.ScoreForContext = 100;
             var scoreFeature = new RankingScore(Grammar.Value);
             DomainLearningLogic learningLogic = new WitnessFunctions(Grammar.Value);
@@ -78,35 +76,79 @@ namespace SimpleProse
             {
                 var inputState = State.CreateForExecution(Grammar.Value.InputSymbol, input);
                 var actual = (List<int>)program.Invoke(inputState);
-                actual.ForEach(Console.WriteLine);
+                foreach (var num in actual)
+                {
+                    Console.Write(num + ",");
+                }
+                Console.WriteLine();
             }
             Console.WriteLine();
             Console.WriteLine();
         }
         
-        
-        public static ExampleSpec CreateSimpleExampleSpec(IEnumerable<Tuple<IEnumerable<int>, IEnumerable<int>>> examples, Result<Grammar> grammar)
+        private static void Test(string input, string output)
         {
-            var proseExamples = new Dictionary<State, object>();
-            foreach (var example in examples)
+            GetGrammar(@"Prose/test.grammar");
+            using (var ctx = new Context())
             {
-                var input = State.CreateForExecution(grammar.Value.InputSymbol, example.Item1);
-                var astAfter = example.Item2;
-                proseExamples.Add(input, astAfter);
-            }
-            var spec = new ExampleSpec(proseExamples);
-            return spec;
-        }
+                var testInput = SmtLib.Smt2FileTest(ctx, input);
+                var testInputTree = Utils.HandleSmtLibParsed(testInput, ctx);
+                Console.WriteLine(testInputTree.Expr.ToString());
 
+                var testOutput = SmtLib.Smt2FileTest(ctx, output);
+                var testOutputTree = Utils.HandleSmtLibParsed(testOutput, ctx);
+
+
+                Console.WriteLine("Input: " + ReadableParser.ToReadable(testInputTree.Expr, new List<string>().ToArray()));
+                Console.WriteLine();
+                Console.WriteLine("Output: " + ReadableParser.ToReadable(testOutputTree.Expr, new List<string>().ToArray()));
+                Console.WriteLine();
+
+                var inputExamples = new List<Tuple<Node, Node>>()
+                {
+                    new (testInputTree, testOutputTree)
+                };
+
+                var spec = Utils.CreateExampleSpec(inputExamples, Grammar);
+                RankingScore.ScoreForContext = 100;
+                var scoreFeature = new RankingScore(Grammar.Value);
+                DomainLearningLogic learningLogic = new WitnessFunctions(Grammar.Value);
+
+                _prose = new SynthesisEngine(Grammar.Value,
+                  new SynthesisEngine.Config
+                  {
+                      LogListener = new LogListener(),
+                      Strategies = new ISynthesisStrategy[] { new DeductiveSynthesis(learningLogic) },
+                      UseThreads = false,
+                      CacheSize = int.MaxValue
+                  });
+                var learned = _prose.LearnGrammarTopK(spec, scoreFeature);
+                _prose.Configuration.LogListener.SaveLogToXML("imp.xml");
+
+                Console.WriteLine("Possible Programs: " + learned);
+                var finalPrograms = learned.RealizedPrograms.ToList();
+                foreach (var program in finalPrograms)
+                {
+                    var inputState = State.CreateForExecution(Grammar.Value.InputSymbol, testInputTree);
+                    var actual = (Node)program.Invoke(inputState);
+                    Console.WriteLine("Actual: " + ReadableParser.ToReadable(actual.Expr, new List<string>().ToArray()));
+                }
+                Console.WriteLine();
+                Console.WriteLine();
+            }
+        }
+        
         private static void Main()
         {
+            /*
             var input = new List<int> {0, 1, 2};
             var intOutput = new List<int> {1, 2, 0};
             var output = new List<int> {2, 1, 0};
             //TestSimple(input, intOutput);
             //TestSimple(intOutput, output);
             TestSimple(input, output);
-
+            */
+            Test("move-input.smt2", "move-output.smt2");
         }
     }
 }
